@@ -5,20 +5,32 @@
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const motionOff = () => reduceMotion || root.classList.contains("animations-off");
 
+  const LEAD_FORM = {
+    endpoint: "https://api.web3forms.com/submit",
+    accessKey: "ce029fa1-ecba-443d-815d-afea2d960cc6"
+  };
+
+  const SUBJECT_LABELS = {
+    he: { family: "דיני משפחה", labor: "דיני עבודה", realestate: "נדל״ן", other: "אחר" },
+    en: { family: "Family law", labor: "Employment", realestate: "Real estate", other: "Other" }
+  };
+
   const STR = {
     he: {
       name: "חסר כאן שם מלא",
       phone: "המספר לא נראה שלם",
       email: "המייל לא נראה תקין",
       subject: "בחרו נושא לפני השליחה",
-      message: "ספרו בקצרה במה מדובר"
+      message: "ספרו בקצרה במה מדובר",
+      submitFail: "השליחה לא הצליחה. נסו שוב בעוד רגע, או התקשרו אלינו."
     },
     en: {
       name: "Please add your full name",
       phone: "That phone number looks incomplete",
       email: "That email looks incorrect",
       subject: "Choose a subject first",
-      message: "Tell us briefly what this is about"
+      message: "Tell us briefly what this is about",
+      submitFail: "We could not send your details. Please try again or call us."
     }
   };
 
@@ -352,7 +364,7 @@
         if (input.getAttribute("aria-invalid") === "true" && isValid(input)) setError(input, "");
       });
     });
-    form.addEventListener("submit", (e) => {
+    form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const messages = STR[lang()];
       let first = null;
@@ -365,12 +377,74 @@
         first.focus();
         return;
       }
+
       const fields = form.querySelector(".form-fields");
       const success = form.querySelector(".form-success");
-      if (fields) fields.hidden = true;
-      if (success) {
-        success.hidden = false;
-        success.focus();
+      const submitBtn = form.querySelector('button[type="submit"]');
+      let formError = form.querySelector(".form-submit-error");
+      if (formError) formError.hidden = true;
+
+      const body = new FormData();
+      body.append("access_key", LEAD_FORM.accessKey);
+      body.append("botcheck", "");
+      body.append("from_name", "Yael Shahar Levinson — Website");
+      body.append("page", location.pathname + location.search);
+      body.append("page_title", document.title);
+
+      let inquiryTopic = "";
+      let inquiryTopicLabel = "";
+      inputs.forEach((input) => {
+        if (!input.name) return;
+        const value = input.value.trim();
+        if (input.name === "subject") {
+          inquiryTopic = value;
+          inquiryTopicLabel = SUBJECT_LABELS[lang()][value] || value;
+          body.append("inquiry_topic", inquiryTopic);
+          body.append("inquiry_topic_label", inquiryTopicLabel);
+          return;
+        }
+        body.append(input.name, value);
+      });
+
+      const topicLabel = inquiryTopicLabel || inquiryTopic;
+      body.append(
+        "subject",
+        topicLabel
+          ? (lang() === "en" ? "New inquiry — " : "פנייה מהאתר — ") + topicLabel
+          : (lang() === "en" ? "New inquiry from the website" : "פנייה חדשה מהאתר")
+      );
+
+      if (submitBtn) submitBtn.disabled = true;
+
+      try {
+        const res = await fetch(LEAD_FORM.endpoint, {
+          method: "POST",
+          headers: { Accept: "application/json" },
+          body
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+          throw new Error(data.message || "submit failed");
+        }
+        if (fields) fields.hidden = true;
+        if (success) {
+          success.hidden = false;
+          success.focus();
+        }
+      } catch (err) {
+        if (!formError && fields) {
+          formError = document.createElement("p");
+          formError.className = "form-submit-error field-error";
+          formError.setAttribute("role", "alert");
+          fields.appendChild(formError);
+        }
+        if (formError) {
+          formError.hidden = false;
+          formError.replaceChildren();
+          formError.insertAdjacentHTML("afterbegin", ERROR_SVG);
+          formError.append(document.createTextNode(" " + messages.submitFail));
+        }
+        if (submitBtn) submitBtn.disabled = false;
       }
     });
   });

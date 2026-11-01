@@ -1949,6 +1949,8 @@ dd { margin: 0; }
 .reassure { color: var(--muted); font-size: 0.875rem; line-height: 1.5; }
 .form-success { display: grid; justify-items: start; gap: 8px; }
 .form-success[hidden] { display: none; }
+.form-submit-error { margin: 0; }
+.form-submit-error[hidden] { display: none; }
 .success-title {
   font-family: var(--serif);
   font-size: 1.5rem;
