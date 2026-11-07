@@ -202,6 +202,7 @@
       try { localStorage.setItem("cohen-motion", on ? "off" : "on"); } catch (err) { /* ignore */ }
       if (on) {
         document.querySelectorAll(".reveal").forEach((el) => el.classList.add("is-in"));
+        document.querySelectorAll("[data-why-step]").forEach((el) => el.classList.add("is-in"));
         document.querySelectorAll("[data-count]").forEach((el) => { el.textContent = el.dataset.count; });
         document.querySelectorAll("[data-stat-count]").forEach((el) => {
           const digit = el.querySelector(".about-intro__stat-digit");
@@ -816,147 +817,102 @@
     show(0, 0);
   }
 
-  const pillarsRoot = document.querySelector("[data-pillars]");
-  if (pillarsRoot) {
-    const pin = pillarsRoot.querySelector(".pillars-pin");
-    const center = pillarsRoot.querySelector(".pillars-center");
-    const hint = pillarsRoot.querySelector(".pillars-hint");
-    const items = [...pillarsRoot.querySelectorAll("[data-pillar]")].map((el) => ({
-      el,
-      num: el.querySelector(".pillar-num-inner"),
-      copy: el.querySelector(".pillar-copy"),
-      start: Number(el.dataset.start),
-      end: Number(el.dataset.end),
-      x: Number(el.dataset.x),
-      y: Number(el.dataset.y),
-      dx: Number(el.dataset.dx),
-      dy: Number(el.dataset.dy)
-    }));
-    let mode = "";
-    let io = null;
-    let ticking = false;
+  const whyRoot = document.querySelector("[data-why]");
+  if (whyRoot) {
+    const rule = whyRoot.querySelector("[data-why-rule]");
+    const stepsWrap = whyRoot.querySelector("[data-why-steps]");
+    const steps = [...whyRoot.querySelectorAll("[data-why-step]")];
     let watching = false;
+    let ticking = false;
 
-    function bezier(x1, y1, x2, y2) {
-      return function (x) {
-        if (x <= 0) return 0;
-        if (x >= 1) return 1;
-        let t = x;
-        for (let i = 0; i < 6; i++) {
-          const u = 1 - t;
-          const xt = 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t;
-          const dx = 3 * u * u * x1 + 6 * u * t * (x2 - x1) + 3 * t * t * (1 - x2);
-          if (Math.abs(dx) < 1e-5) break;
-          t = Math.min(1, Math.max(0, t - (xt - x) / dx));
-        }
-        const u = 1 - t;
-        return 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t;
-      };
+    function whyStopped() {
+      return motionOff();
     }
-    const ease = bezier(0.22, 1, 0.36, 1);
-
     function clamp01(v) {
       return v < 0 ? 0 : v > 1 ? 1 : v;
     }
-    function px(n) {
-      if (Math.abs(n) < 0.3) return 0;
-      return Math.round(n * 10) / 10;
+    function setRule(p) {
+      if (!rule) return;
+      rule.style.transform = "scaleX(" + p.toFixed(3) + ")";
     }
-    function stopped() {
-      return root.classList.contains("animations-off");
+    function ruleProgress() {
+      if (!rule) return 1;
+      const rect = rule.getBoundingClientRect();
+      const vh = window.innerHeight || 1;
+      const start = vh * 0.82;
+      const end = vh * 0.56;
+      return clamp01((start - rect.top) / (start - end || 1));
     }
-    function clearInline() {
-      items.forEach((item) => {
-        item.el.classList.remove("is-in");
-        if (item.num) {
-          item.num.style.opacity = "";
-          item.num.style.transform = "";
-        }
-        if (item.copy) {
-          item.copy.style.opacity = "";
-          item.copy.style.transform = "";
-        }
-      });
-      if (center) center.style.transform = "";
-      if (hint) hint.style.opacity = "";
-    }
-    function progress() {
-      const header = parseFloat(getComputedStyle(root).getPropertyValue("--header")) || 0;
-      const scrollable = pillarsRoot.offsetHeight - pin.offsetHeight;
-      if (scrollable <= 1) return 1;
-      return clamp01((header - pillarsRoot.getBoundingClientRect().top) / scrollable);
-    }
-    function paint() {
+    function paintRule() {
       ticking = false;
-      if (mode !== "scrub") return;
-      const p = progress();
-      const drift = ease(clamp01((p - 0.8) / 0.2)) * 20;
-      items.forEach((item) => {
-        const span = Math.max(0.001, item.end - item.start);
-        const numT = ease(clamp01((p - (item.start - 0.02)) / Math.max(0.001, span - 0.02)));
-        const wordT = ease(clamp01((p - item.start) / span));
-        const nx = px(item.x * (1 - numT) + item.dx * drift);
-        const ny = px(item.y * (1 - numT) + item.dy * drift);
-        const cx = px(item.x * (1 - wordT));
-        const cy = px(item.y * (1 - wordT));
-        if (item.num) {
-          item.num.style.opacity = numT.toFixed(3);
-          item.num.style.transform = (nx === 0 && ny === 0) ? "" : "translate3d(" + nx + "px," + ny + "px,0)";
-        }
-        if (item.copy) {
-          item.copy.style.opacity = wordT.toFixed(3);
-          item.copy.style.transform = (cx === 0 && cy === 0) ? "" : "translate3d(" + cx + "px," + cy + "px,0)";
-        }
-      });
-      if (center) {
-        const scale = 1 + Math.sin(p * Math.PI) * 0.02;
-        center.style.transform = Math.abs(scale - 1) < 0.001 ? "" : "scale(" + scale.toFixed(4) + ")";
+      if (whyStopped()) {
+        setRule(1);
+        return;
       }
-      if (hint) hint.style.opacity = (1 - ease(clamp01((p - 0.02) / 0.1))).toFixed(3);
+      setRule(ruleProgress());
     }
-    function requestUpdate() {
-      if (mode !== "scrub" || ticking) return;
+    function requestRule() {
+      if (ticking) return;
       ticking = true;
-      requestAnimationFrame(paint);
+      requestAnimationFrame(paintRule);
     }
     function startWatch() {
       if (watching) return;
       watching = true;
-      window.addEventListener("scroll", requestUpdate, { passive: true });
-      requestUpdate();
+      window.addEventListener("scroll", requestRule, { passive: true });
+      requestRule();
     }
     function stopWatch() {
       if (!watching) return;
-      window.removeEventListener("scroll", requestUpdate);
+      window.removeEventListener("scroll", requestRule);
       watching = false;
       ticking = false;
     }
-    function applyMode() {
-      const next = stopped() ? "static" : "scrub";
-      if (next === mode) {
-        if (next === "scrub") requestUpdate();
+    function revealSteps() {
+      steps.forEach((el) => el.classList.add("is-in"));
+    }
+    function applyWhy() {
+      const staticNow = whyStopped();
+      whyRoot.classList.toggle("is-static", staticNow);
+      if (staticNow) {
+        stopWatch();
+        setRule(1);
+        revealSteps();
         return;
       }
-      stopWatch();
-      if (io) {
-        io.disconnect();
-        io = null;
-      }
-      clearInline();
-      mode = next;
-      pillarsRoot.classList.toggle("is-static", next === "static");
-      if (next === "scrub") startWatch();
-      else items.forEach((item) => item.el.classList.add("is-in"));
+      startWatch();
     }
 
-    applyMode();
-    window.addEventListener("resize", applyMode, { passive: true });
-    window.addEventListener("load", requestUpdate);
-    if ("ResizeObserver" in window) {
-      const mainElBox = document.getElementById("main");
-      if (mainElBox) new ResizeObserver(() => { if (mode === "scrub") requestUpdate(); }).observe(mainElBox);
+    applyWhy();
+
+    if ("IntersectionObserver" in window) {
+      if (rule) {
+        const ruleIo = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (whyStopped()) return;
+            if (entry.isIntersecting) startWatch();
+            else stopWatch();
+          });
+        }, { rootMargin: "64px 0px 64px 0px" });
+        ruleIo.observe(rule);
+      }
+      if (stepsWrap) {
+        const stepsIo = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            revealSteps();
+            stepsIo.unobserve(entry.target);
+          });
+        }, { threshold: 0.16, rootMargin: "0px 0px -36px 0px" });
+        stepsIo.observe(stepsWrap);
+      }
+    } else {
+      revealSteps();
+      setRule(1);
     }
-    new MutationObserver(applyMode).observe(root, { attributes: true, attributeFilter: ["class"] });
+
+    window.addEventListener("resize", () => { if (!whyStopped()) requestRule(); }, { passive: true });
+    new MutationObserver(applyWhy).observe(root, { attributes: true, attributeFilter: ["class"] });
   }
 
   function easeOutCubic(t) {
